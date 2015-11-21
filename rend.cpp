@@ -1343,23 +1343,24 @@ int displayTexture(GzDisplay	*display, GzRender *render) { // NEW: change the di
 	if (display == NULL)
 		return GZ_FAILURE;
 
-	int index; // used to cycle through the framebuffer
+	int index = 0; // used to cycle through the framebuffer
 	float u, v;
 	GzColor color;
 
 	// Initializes values for background color
-	for (int i = 0; i < display->xres; ++i) {
-		for (int j = 0; j < display->yres; ++j) {
-			u = (float)(i) / (float)display->xres;
-			v = (float)(j) / (float)display->yres;
+	for (int j = 0; j < display->yres; ++j) {
+		for (int i = 0; i < display->xres; ++i) {
+			u = ((float)(i) + 0.5) / (float)display->xres;
+			v = ((float)(j) + 0.5) / (float)display->yres;
 
-			index = (j*display->xres) + i;
 			render->tex_fun(u, v, color);
 			display->fbuf[index].red = color[0] * 4095;
 			display->fbuf[index].green = color[1] * 4095;
 			display->fbuf[index].blue = color[2] * 4095;
 			display->fbuf[index].alpha = 4095;
 			display->fbuf[index].z = MAXINT;
+
+			++index;
 		}
 	}
 	return GZ_SUCCESS;

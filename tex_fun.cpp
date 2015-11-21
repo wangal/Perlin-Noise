@@ -6,6 +6,10 @@
 GzColor	*image=NULL;
 int xs, ys;
 int reset = 1;
+bool set = false;
+
+const int GSIZE = 16;
+float gradientMap[GSIZE*GSIZE][2];
 
 /* Image texture function */
 int tex_fun(float u, float v, GzColor color)
@@ -104,7 +108,7 @@ int tex_fun(float u, float v, GzColor color)
 /* set color to interpolated GzColor value and return */
 }
 
-void subVector(float *v1, float *v2, float *sol) { // normalize the vector
+void subVector(float *v1, float *v2, float *sol) { // subtracts the vector
 	for (int i = 0; i < 2; ++i)
 		sol[i] = v1[i] - v2[i];
 }
@@ -122,23 +126,10 @@ void texNormalize(float *v) { // normalize the vector
 }
 
 float lerp(float v1, float v2, float a) { // normalize the vector
-	return (v1 * a) + (v2 * (1 - a));
+	return (v2 * a) + (v1 * (1 - a));
 }
 
-float clamp(float s) { // clamp to 0-1
-	if (s < 0) s = 0;
-	else if (s > 1) s = 1;
-	return s;
-}
-
-float clampOne(float s) { // clamp to 0-1
-	if (s < -1) s = -1;
-	else if (s > 1) s = 1;
-	return s;
-}
-
-// Returns the coordinates on a tile
-float findTileCoord(float u, float scale) { //
+float findTileCoord(float u, float scale) { // Returns the coordinates on a tile
 	float tileSize = 1.0f / scale;
 	float value = u;
 	while (value > tileSize)
@@ -146,93 +137,69 @@ float findTileCoord(float u, float scale) { //
 	return value / tileSize;
 }
 
-float noise_func(int x, int y) { // function for blending the values
-	//return rand() % 32768 / 32768.0;
-		int n = x + y * 57;
-		n = (n << 13) ^ n;
-		return (1.0 - ((n * (n * n * 15731 + 789221) + 1376312589) & (7 * 268435456 + 268435455)) / 1073741824.0);
-		
-}
-
-float findNoise(float x, float y) { // function for blending the values
-	int xbegin = x, ybegin = y;
-	int xend = x + 1, yend = y + 1;
-	float xdiff = x - (float)xbegin;
-	float ydiff = y - (float)ybegin;
-
-	// Prevent skewing values for the image
-	if (xbegin >= xs - 1) {
-		xbegin = xs - 2;
-		xend = xs - 1;
-	}
-	if (ybegin >= ys - 1) {
-		ybegin = ys - 2;
-		yend = ys - 1;
-	}
-	if (xend <= 0) {
-		xbegin = 0;
-		xend = 1;
-	}
-	if (yend <= 0) {
-		ybegin = 0;
-		yend = 1;
-	}
-
-	float noiseUL = noise_func(xbegin, ybegin);
-	float noiseUR = noise_func(xend, ybegin);
-	float noiseDL = noise_func(xend, yend);
-	float noiseDR = noise_func(xbegin, yend);
-
-	float total = 0;
-	total += xdiff * ydiff * noiseUL;
-	total += (1 - xdiff) * ydiff * noiseUR;
-	total += xdiff * (1 - ydiff) * noiseDL;
-	total += (1 - xdiff) * (1 - ydiff) * noiseDR;
-	return total;
-}
-
 float fade_func(float t) { // function for blending the values
+	return 6 * pow(t, 5) - 15 * pow(t, 4) + 10 * pow(t, 3);
+}
+
+float smooth_func(float t) { // smooths the noise
 	return 6 * pow(t, 5) - 15 * pow(t, 4) + 10 * pow(t, 3);
 }
 
 float perlinNoise(float u, float v)
 {
 	// gradient map represents the tile N x N
-	int size = 3;
-	const int GSIZE = 9;
+	// sets up pseudorandom gradient map
+	if (!set) {
+		for (int i = 0; i < GSIZE * GSIZE; ++i) {
+			for (int j = 0; j < 2; ++j) {
+				gradientMap[i][j] = (float)((rand() % 10000) - 5000) / 5000.0f;
+			}
+		}
+		set = true;
+	}
+	/*
+	int size = 2;
+	const int GSIZE = 4;
 	float gradientMap[GSIZE][2] =
 	{
-		{ 1, 1 }, { -1, 1 }, { 1, -1 },
-		{ -1, -1 }, { -1, -1 }, { -1, 1 },
-		{ 1, -1 }, { -1, -1 }, { 1, 1 }
+		{ 1, 1 }, { -1, 1 },
+		{ 1, -1 }, { -1, -1 }
 	};
-
+	*/
 	// Scale must be in power of 2
-	float scale = 2.0f;
+	float scale = GSIZE - 1;
 
-	int xint = u * scale;
-	int yint = v * scale;
-	int index = xint + (yint * size);
+	//	gets index at lowerright corner
+	int xint = ceilf(u * scale);
+	int yint = ceilf(v * scale);
+
+	int up = (((yint - 1) % GSIZE)* GSIZE);
+	int down = ((yint % GSIZE)* GSIZE);
+	int right = (xint) % GSIZE;
+	int left = (xint - 1) % GSIZE;
+
+	// finds the four surrounding corners for gradient maps by indices
+	int indexUL = up + left;
+	int indexUR = up + right;
+	int indexDL = down + left;
+	int indexDR = down + right;
 
 	// find surround gradients as a tile containing a point
 	float gradients[4][2];
 	for (int j = 0; j < 2; ++j) {
-		gradients[0][j] = gradientMap[index][j];
-		gradients[1][j] = gradientMap[index + 1][j];
-		gradients[2][j] = gradientMap[index + size][j];
-		gradients[3][j] = gradientMap[index + 1 + size][j];
+		gradients[0][j] = gradientMap[indexUL][j];
+		gradients[1][j] = gradientMap[indexUR][j];
+		gradients[2][j] = gradientMap[indexDL][j];
+		gradients[3][j] = gradientMap[indexDR][j];
 	}
 
 	// tranform u and v to match coordinates for one tile
 	float xTile = findTileCoord(u, scale);
 	float yTile = findTileCoord(v, scale);
 
-	// normalize the gradientMap
-	for (int i = 0; i < 4; ++i)
-		texNormalize(gradients[i]);
-
-
-	//int n = findGradient(xTile, yTile);
+	// fade function
+	//xTile = fade_func(xTile);
+	//yTile = fade_func(yTile);
 
 	// (0,0) ________(1,0)
 	//       |      |
@@ -251,15 +218,10 @@ float perlinNoise(float u, float v)
 	float vectDR[2];
 
 	// vect1 - vect2 = newVect
-	subVector(uv, UL, vectUL);
-	subVector(uv, UR, vectUR);
-	subVector(uv, DL, vectDL);
-	subVector(uv, DR, vectDR);
-
-	//texNormalize(vectUL);
-	//texNormalize(vectUR);
-	//texNormalize(vectDL);
-	//texNormalize(vectDR);
+	subVector(UL, uv, vectUL);
+	subVector(UR, uv, vectUR);
+	subVector(DL, uv, vectDL);
+	subVector(DR, uv, vectDR);
 
 	// tkae dot product between distance vector and gradient vector
 	float ulDist = texDotProduct(vectUL, gradients[0]);
@@ -267,9 +229,10 @@ float perlinNoise(float u, float v)
 	float dlDist = texDotProduct(vectDL, gradients[2]);
 	float drDist = texDotProduct(vectDR, gradients[3]);
 
+	// from 0-1 for t between those value
 	float topValue = lerp(ulDist, urDist, xTile);
 	float bottomValue = lerp(dlDist, drDist, xTile);
-	return lerp(topValue, bottomValue, yTile);
+	return (lerp(topValue, bottomValue, yTile) + 1.0) / 2.0; // bounds the value between 0 and 1
 }
 
 /* Procedural texture function */
@@ -280,9 +243,8 @@ int ptex_fun(float u, float v, GzColor color) // currently set to checkerboard
 //http://lodev.org/cgtutor/randomnoise.html
 //http://code.google.com/p/fractalterraingeneration/wiki/Perlin_Noise
 
-	// clamp u and v
-	u = clamp(u);
-	v = clamp(v);
+	float x = u - (int)u;
+	float y = v - (int)v;
 
 	// TILING //////////////////////////////////////////////////////
 	// Scale must be in power of 2
@@ -293,11 +255,8 @@ int ptex_fun(float u, float v, GzColor color) // currently set to checkerboard
 	//float yTile = findTileCoord(v, scale);
 
 	/////////////////////////////////////////////////////////////////
-
-	//xTile = fade_func(xTile);
-	//yTile = fade_func(yTile);
 	
-	float value = 0;
+	float noise_value = 0;
 	float total = 0;
 	float persist = 0.5;
 	int octaves = 1;
@@ -305,30 +264,24 @@ int ptex_fun(float u, float v, GzColor color) // currently set to checkerboard
 
 	// turbulence
 	//////////////////////////////////////////////////////
-	for (int i = 0; i < octaves; ++i) {
 
-		value += perlinNoise(u * freq, v * freq) * ampl;
+	for (int i = 0; i < octaves; ++i) {
+		noise_value += perlinNoise(x * freq, y * freq) * ampl;
 		total += ampl;
 		freq *= 2.0f;
 		ampl *= persist;
 	}
-
-	value /= total;
+	
 	//////////////////////////////////////////////////////
+
+	noise_value /= total;
 
 	// Perlin noise must first take u, v and then find the four points (each with a gradient vector)
 	// implement WANG Tiles: a type of perlin noise
 
-
-	value = clampOne(value); // clamp value between [-1, 1]
-
 	for (int i = 0; i < 3; ++i) {
-		color[i] = 0;
+		color[i] = noise_value;
 	}
-
-	if (value < 0)
-		color[0] = -value;
-	else color[0] = value;
 
 	return 1;
 }
