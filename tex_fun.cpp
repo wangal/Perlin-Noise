@@ -8,6 +8,8 @@ int xs, ys;
 int reset = 1;
 bool set = false;
 
+#define M_PI       3.14159265358979323846
+
 const int GSIZE = 16;
 float gradientMap[GSIZE*GSIZE][2];
 
@@ -129,6 +131,11 @@ float lerp(float v1, float v2, float a) { // normalize the vector
 	return (v2 * a) + (v1 * (1 - a));
 }
 
+float cos_interp(float v1, float v2, float a) { // normalize the vector
+	float value = (1 - cos(a * M_PI)) * 0.5f;
+	return lerp(v1, v2, value);
+}
+
 float findTileCoord(float u, float scale) { // Returns the coordinates on a tile
 	float tileSize = 1.0f / scale;
 	float value = u;
@@ -154,6 +161,7 @@ float perlinNoise(float u, float v)
 			for (int j = 0; j < 2; ++j) {
 				gradientMap[i][j] = (float)((rand() % 10000) - 5000) / 5000.0f;
 			}
+			//texNormalize(gradientMap[i]);
 		}
 		set = true;
 	}
@@ -197,10 +205,6 @@ float perlinNoise(float u, float v)
 	float xTile = findTileCoord(u, scale);
 	float yTile = findTileCoord(v, scale);
 
-	// fade function
-	//xTile = fade_func(xTile);
-	//yTile = fade_func(yTile);
-
 	// (0,0) ________(1,0)
 	//       |      |
 	//       |      |
@@ -229,10 +233,30 @@ float perlinNoise(float u, float v)
 	float dlDist = texDotProduct(vectDL, gradients[2]);
 	float drDist = texDotProduct(vectDR, gradients[3]);
 
+	float topValue, bottomValue;
 	// from 0-1 for t between those value
-	float topValue = lerp(ulDist, urDist, xTile);
-	float bottomValue = lerp(dlDist, drDist, xTile);
+	// linear interp
+
+	// LINEAR INTERPOLATION
+	/////////////////////////////////////////////////////////
+	// fade function used to distort the functions
+	xTile = fade_func(xTile);
+	yTile = fade_func(yTile);
+
+	topValue = lerp(ulDist, urDist, xTile);
+	bottomValue = lerp(dlDist, drDist, xTile);
 	return (lerp(topValue, bottomValue, yTile) + 1.0) / 2.0; // bounds the value between 0 and 1
+	/////////////////////////////////////////////////////////
+
+	// COSINE INTERPOLATION
+	/////////////////////////////////////////////////////////
+	/*
+	topValue = cos_interp(ulDist, urDist, xTile);
+	bottomValue = cos_interp(dlDist, drDist, xTile);
+	return (cos_interp(topValue, bottomValue, yTile) + 1.0) / 2.0; // bounds the value between 0 and 1
+	*/
+	/////////////////////////////////////////////////////////
+
 }
 
 /* Procedural texture function */
@@ -245,16 +269,6 @@ int ptex_fun(float u, float v, GzColor color) // currently set to checkerboard
 
 	float x = u - (int)u;
 	float y = v - (int)v;
-
-	// TILING //////////////////////////////////////////////////////
-	// Scale must be in power of 2
-	//float scale = 2.0f;
-
-	// tranform u and v to match coordinates for one tile
-	//float xTile = findTileCoord(u, scale);
-	//float yTile = findTileCoord(v, scale);
-
-	/////////////////////////////////////////////////////////////////
 	
 	float noise_value = 0;
 	float total = 0;
