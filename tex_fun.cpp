@@ -157,6 +157,9 @@ float perlinNoise(float u, float v)
 	// gradient map represents the tile N x N
 	// sets up pseudorandom gradient map
 	if (!set) {
+		// seed for a pseudorandom generator
+		// change the number if you want a different look
+		srand(1);
 		for (int i = 0; i < GSIZE * GSIZE; ++i) {
 			for (int j = 0; j < 2; ++j) {
 				gradientMap[i][j] = (float)((rand() % 10000) - 5000) / 5000.0f;
@@ -177,14 +180,14 @@ float perlinNoise(float u, float v)
 	// Scale must be in power of 2
 	float scale = GSIZE - 1;
 
-	//	gets index at lowerright corner
-	int xint = ceilf(u * scale);
-	int yint = ceilf(v * scale);
+	//	gets index at upperleft corner
+	int xint = int(u * scale);
+	int yint = int(v * scale);
 
-	int up = (((yint - 1) % GSIZE)* GSIZE);
-	int down = ((yint % GSIZE)* GSIZE);
-	int right = (xint) % GSIZE;
-	int left = (xint - 1) % GSIZE;
+	int up = (((yint) % GSIZE)* GSIZE);
+	int down = ((yint + 1 % GSIZE)* GSIZE);
+	int right = (xint + 1) % GSIZE;
+	int left = (xint) % GSIZE;
 
 	// finds the four surrounding corners for gradient maps by indices
 	int indexUL = up + left;
